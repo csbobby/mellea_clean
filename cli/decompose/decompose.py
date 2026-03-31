@@ -27,14 +27,16 @@ from .utils import validate_filename
 
 
 class DecompVersion(StrEnum):
-    """Available versions of the decomposition pipeline template.
+    """Available template versions for generated decomposition programs.
 
-    Newer versions must be declared last to ensure ``latest`` always resolves to
-    the most recent template.
+    Newer concrete versions must be declared after older ones so that
+    ``latest`` can resolve to the most recently declared template version.
 
-    Args:
-        latest (str): Sentinel value that resolves to the last declared version.
-        v1 (str): Version 1 of the decomposition pipeline template.
+    Attributes:
+        latest: Sentinel value that resolves to the last declared concrete
+            template version.
+        v1: Version 1 of the decomposition program template.
+        v2: Version 2 of the decomposition program template.
     """
 
     latest = "latest"
@@ -49,6 +51,25 @@ this_file_dir = Path(__file__).resolve().parent
 def reorder_subtasks(
     subtasks: list[DecompSubtasksResult],
 ) -> list[DecompSubtasksResult]:
+    """Reorders subtasks into a valid dependency order.
+
+    Builds a dependency graph from each subtask's ``tag`` and ``depends_on``
+    fields, filters dependency references to known subtask tags, and applies a
+    topological sort so that each subtask appears after the subtasks it depends
+    on. When reordered subtasks use a leading numeric prefix such as
+    ``"1. ..."`` in the ``subtask`` text, the numbering is rewritten to match
+    the new order.
+
+    Args:
+        subtasks: Structured subtask records to reorder.
+
+    Returns:
+        A new list of subtasks sorted into dependency-safe execution order.
+
+    Raises:
+        ValueError: If the dependency graph contains a cycle and the subtasks
+            therefore cannot be topologically ordered.
+    """
     subtask_map = {subtask["tag"].lower(): subtask for subtask in subtasks}
 
     graph = {}
@@ -78,6 +99,28 @@ def reorder_subtasks(
 def verify_user_variables(
     decomp_data: DecompPipelineResult, input_var: list[str] | None
 ) -> DecompPipelineResult:
+    """Validates declared input variables and subtask dependencies.
+
+    Checks that every variable listed in ``input_vars_required`` is present in
+    ``input_var`` and that every variable listed in ``depends_on`` refers to an
+    existing subtask tag. If the current subtask order violates dependency
+    order, the subtasks are automatically reordered with
+    ``reorder_subtasks()``.
+
+    Args:
+        decomp_data: Structured decomposition result to validate.
+        input_var: User-declared input variable names accepted by the generated
+            program. ``None`` is treated as an empty list.
+
+    Returns:
+        The validated decomposition result. The returned object may have its
+        ``subtasks`` list reordered to satisfy dependency order.
+
+    Raises:
+        ValueError: If a required input variable was not declared in
+            ``input_var`` or if a dependency references a subtask tag that does
+            not exist.
+    """
     if input_var is None:
         input_var = []
 
